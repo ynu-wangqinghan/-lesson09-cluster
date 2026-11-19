@@ -1,0 +1,80 @@
+# bank_customers：k=4 聚类后的簇画像——均值表 + 业务命名 + 分组柱状图
+import pandas as pd
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+
+matplotlib.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "SimSun"]
+matplotlib.rcParams["axes.unicode_minus"] = False
+
+df = pd.read_csv("data/bank_customers.csv")
+features = ["balance", "avg_monthly_spend", "product_count", "overdue_count"]
+X = StandardScaler().fit_transform(df[features])
+df["cluster"] = KMeans(n_clusters=4, random_state=42, n_init=10).fit_predict(X)
+
+# ---------- 业务命名 ----------
+names = {
+    0: "高消费低持卡活跃型",
+    1: "低消费低持卡稳健型",
+    2: "高余额高逾期风险型",
+    3: "多产品低逾期忠诚型",
+}
+colors = {0: "#DD8452", 1: "#4C72B0", 2: "#C44E52", 3: "#55A868"}
+
+# ---------- 画像表 ----------
+counts = df["cluster"].value_counts().sort_index()
+means = df.groupby("cluster")[features].mean()
+profile = pd.DataFrame({
+    "簇编号": counts.index,
+    "业务命名": [names[c] for c in counts.index],
+    "人数": counts.values,
+    "占比(%)": (counts.values / len(df) * 100).round(1),
+    "平均余额(万元)": (means["balance"] / 10000).round(2).values,
+    "月均消费(元)": means["avg_monthly_spend"].round(2).values,
+    "产品持有数(个)": means["product_count"].round(2).values,
+    "逾期次数(次)": means["overdue_count"].round(2).values,
+})
+profile.to_csv("outputs/08_bank_cluster_profile.csv", index=False, encoding="utf-8-sig")
+
+print(profile.to_string(index=False))
+print("\n已保存 outputs/08_bank_cluster_profile.csv")
+
+# ---------- 分组柱状图（2×2，各特征原始单位） ----------
+panels = [
+    ("平均余额（万元）", means["balance"] / 10000, "{:.2f}"),
+    ("月均消费（元）", means["avg_monthly_spend"], "{:,.0f}"),
+    ("产品持有数（个）", means["product_count"], "{:.2f}"),
+    ("逾期次数（次）", means["overdue_count"], "{:.2f}"),
+]
+short = {c: f"簇{c}\n{names[c][:6]}" for c in counts.index}
+
+fig, axes = plt.subplots(2, 2, figsize=(10, 7))
+for ax, (title, series, fmt) in zip(axes.ravel(), panels):
+    vals = series.reindex(counts.index).values
+    bars = ax.bar(counts.index, vals, width=.62,
+                  color=[colors[c] for c in counts.index], zorder=3)
+    for b, v in zip(bars, vals):
+        ax.annotate(fmt.format(v), (b.get_x() + b.get_width() / 2, v),
+                    textcoords="offset points", xytext=(0, 3),
+                    ha="center", fontsize=8.5, color="#3d4a66")
+    ax.set_title(title, fontsize=12)
+    ax.set_xticks(list(counts.index))
+    ax.set_xticklabels([short[c] for c in counts.index], fontsize=8.5)
+    ax.set_ylim(0, max(vals) * 1.16)
+    ax.grid(axis="y", alpha=.3, zorder=0)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.tick_params(axis="y", labelsize=9)
+
+handles = [Patch(facecolor=colors[c], label=f"簇{c} · {names[c]}（{counts[c]} 人）")
+           for c in counts.index]
+fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False,
+           fontsize=9, bbox_to_anchor=(0.5, 0.005), handlelength=1.2,
+           columnspacing=1.6)
+fig.suptitle("四簇客群画像：四特征均值对比（k=4，n=200）", fontsize=15)
+fig.tight_layout(rect=[0, 0.05, 1, 0.94])
+fig.savefig("outputs/08_bank_cluster_profile.png", dpi=150)
+plt.close(fig)
+
+print("已保存 outputs/08_bank_cluster_profile.png")
