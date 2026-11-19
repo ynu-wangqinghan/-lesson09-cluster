@@ -1,0 +1,59 @@
+# bank_customers：k=1..9 逐个跑 KMeans，画 SSE 随 k 变化折线并标注肘点
+import numpy as np
+import pandas as pd
+import matplotlib
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+
+matplotlib.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "SimSun"]
+matplotlib.rcParams["axes.unicode_minus"] = False
+
+df = pd.read_csv("data/bank_customers.csv")
+features = ["balance", "avg_monthly_spend", "product_count", "overdue_count"]
+X = StandardScaler().fit_transform(df[features])
+
+ks = list(range(1, 10))
+sse = []
+for k in ks:
+    km = KMeans(n_clusters=k, random_state=42, n_init=10)
+    km.fit(X)
+    sse.append(km.inertia_)
+
+# 肘点判定：k、SSE 各自归一化到 [0, 1] 后，曲线到首尾连线的垂直距离最大处
+kx = (np.array(ks) - ks[0]) / (ks[-1] - ks[0])
+ky = (np.array(sse) - sse[0]) / (sse[-1] - sse[0])
+dist = np.abs(ky - kx) / np.sqrt(2)  # 归一化坐标下首尾连线为 y=x
+elbow_k = ks[int(np.argmax(dist))]
+
+# ---------- 绘图 ----------
+fig, ax = plt.subplots(figsize=(10, 7))
+ax.plot(ks, sse, "o-", color="#4C72B0", linewidth=2.2, markersize=7)
+for k, v in zip(ks, sse):
+    ax.annotate(f"{v:.0f}", (k, v), textcoords="offset points", xytext=(0, 9),
+                fontsize=9, ha="center", color="#4b5875")
+
+ax.axvline(x=elbow_k, color="#C0392B", linestyle="--", linewidth=1.6, alpha=.75)
+ax.scatter([elbow_k], [sse[elbow_k - 1]], s=180, facecolors="none",
+           edgecolors="#C0392B", linewidths=2, zorder=5)
+ax.annotate(f"肘点 k={elbow_k}", (elbow_k, sse[elbow_k - 1]),
+            textcoords="offset points", xytext=(18, 22), fontsize=12,
+            color="#C0392B", fontweight="bold",
+            arrowprops=dict(arrowstyle="->", color="#C0392B"))
+
+ax.set_title("SSE（簇内平方和）随簇数 k 的变化", fontsize=15)
+ax.set_xlabel("簇数 k", fontsize=12)
+ax.set_ylabel("SSE（inertia，标准化坐标）", fontsize=12)
+ax.set_xticks(ks)
+ax.grid(alpha=.3)
+plt.tight_layout()
+plt.savefig("outputs/07_bank_sse_elbow.png", dpi=150)
+plt.close()
+
+# ---------- 控制台输出 ----------
+print("k\tSSE\t\t相邻降幅")
+for i, (k, v) in enumerate(zip(ks, sse)):
+    drop = f"{sse[i - 1] - v:.2f}（{(sse[i - 1] - v) / sse[i - 1] * 100:.1f}%）" if i else "—"
+    print(f"{k}\t{v:.2f}\t\t{drop}")
+print(f"\n肘点判定：k={elbow_k}")
+print("已保存 outputs/07_bank_sse_elbow.png")
